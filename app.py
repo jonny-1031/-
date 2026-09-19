@@ -1,7 +1,6 @@
 import pandas as pd
 import streamlit as st
 
-# 1. スマホ・PC共通で画面をワイド表示に設定
 st.set_page_config(page_title="機種評価・希望台数ツール", layout="wide")
 
 st.title("📱 機種評価・希望台数まとめツール")
@@ -52,9 +51,8 @@ if "qty_df" not in st.session_state:
 tab1, tab2 = st.tabs(["📝 データ入力", "📊 貼り付け用データ生成"])
 
 with tab1:
-    # アコーディオンにしてスマホでのスクロール長を軽減
     with st.expander("1. 機種評価の入力（タップで開閉）", expanded=True):
-        st.session_state.eval_df = st.data_editor(
+        edited_eval = st.data_editor(
             st.session_state.eval_df,
             column_config={
                 store: st.column_config.SelectboxColumn(
@@ -62,13 +60,13 @@ with tab1:
                 )
                 for store in STORES
             },
-            use_container_width=True,  # 画面幅いっぱいに自動調整
+            use_container_width=True,
             hide_index=True,
             key="editor_eval",
         )
 
     with st.expander("2. 希望台数の入力（タップで開閉）", expanded=True):
-        st.session_state.qty_df = st.data_editor(
+        edited_qty = st.data_editor(
             st.session_state.qty_df,
             column_config={
                 store: st.column_config.NumberColumn(
@@ -76,10 +74,17 @@ with tab1:
                 )
                 for store in STORES
             },
-            use_container_width=True,  # 画面幅いっぱいに自動調整
+            use_container_width=True,
             hide_index=True,
             key="editor_qty",
         )
+
+    # 分かりやすい保存ボタンを追加
+    st.markdown("---")
+    if st.button("💾 入力内容を保存する", type="primary", use_container_width=True):
+        st.session_state.eval_df = edited_eval
+        st.session_state.qty_df = edited_qty
+        st.success("✅ 入力したデータを保存しました！「貼り付け用データ生成」タブで確認できます。")
 
 with tab2:
     st.subheader("貼り付け用データ")
@@ -108,6 +113,9 @@ with tab2:
 
     st.write("▼ 機種評価マトリクス")
     st.dataframe(eval_pivot, use_container_width=True)
+
+    st.write("▼ 希望台数マトリクス")
+    st.dataframe(qty_pivot, use_container_width=True)
 
     st.write("▼ 希望台数マトリクス")
     st.dataframe(qty_pivot, use_container_width=True)
