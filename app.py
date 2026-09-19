@@ -1,3 +1,4 @@
+import io
 import pandas as pd
 import streamlit as st
 
@@ -17,7 +18,9 @@ STORES = [
     "中石切",
     "大東",
 ]
-RANKS = ["A", "B+", "B", "B-", "C", "None"]
+
+# ① 「None」ではなく「-」（未選択）に変更して重複選択エラーを回避
+RANKS = ["-", "A", "B+", "B", "B-", "C"]
 
 MODELS = [
     ("L 怪盗天使ツインエンジェル2 FX", 5000),
@@ -30,22 +33,69 @@ MODELS = [
     ("L 東京喰種FT", 2500),
 ]
 
+# 初期データの作成関数
+def create_default_eval():
+    df = pd.DataFrame(
+        {"機種名": [m[0] for m in MODELS], "販売台数": [m[1] for m in MODELS]}
+    )
+    for store in STORES:
+        df[store] = "-"
+    return df
+
+def create_default_qty():
+    df = pd.DataFrame(
+        {"機種名": [m[0] for m in MODELS], "販売台数": [m[1] for m in MODELS]}
+    )
+    for store in STORES:
+        df[store] = 0
+    return df
+
 # セッション状態の初期化
 if "eval_df" not in st.session_state:
-    df_eval = pd.DataFrame(
-        {"機種名": [m[0] for m in MODELS], "販売台数": [m[1] for m in MODELS]}
-    )
-    for store in STORES:
-        df_eval[store] = "None"
-    st.session_state.eval_df = df_eval
+    st.session_state.eval_df = create_default_eval()
 
 if "qty_df" not in st.session_state:
-    df_qty = pd.DataFrame(
-        {"機種名": [m[0] for m in MODELS], "販売台数": [m[1] for m in MODELS]}
-    )
-    for store in STORES:
-        df_qty[store] = 0
-    st.session_state.qty_df = df_qty
+    st.session_state.qty_df = create_default_qty()
+
+# サイドバー：データの保存と復元（CSV）
+st.sidebar.header("📁 データの保存・読み込み")
+
+# ②-1 CSVでデータダウンロード（保存）
+combined_df = pd.concat(
+    [
+        st.session_state.eval_df.assign(データ種別="評価"),
+        st.session_state.qty_df.assign(データ種別="希望台数"),
+    ]
+)
+csv_data = combined_df.to_csv(index=False).encode("utf-8-sig")
+
+st.sidebar.download_button(
+    label="💾 バックアップをダウンロード (CSV)",
+    data=csv_data,
+    file_name="syuukei_data.csv",
+    mime="text/csv",
+    use_container_width=True,
+)
+
+# ②-2 保存したCSVの読み込み（復元）
+uploaded_file = st.sidebar.file_uploader(
+    "📂 前回保存したCSVを読み込む", type=["csv"]
+)
+if uploaded_file is not None:
+    try:
+        loaded_df = pd.read_csv(uploaded_file)
+        eval_loaded = loaded_df[loaded_df["データ種別"] == "評価"].drop(
+            columns=["データ種別"]
+        )
+        qty_loaded = loaded_df[loaded_df["データ種別"] == "希望台数"].drop(
+            columns=["データ種別"]
+        )
+
+        st.session_state.eval_df = eval_loaded
+        st.session_state.qty_df = qty_loaded
+        st.sidebar.success("✅ データを読み込みました！")
+    except Exception as e:
+        st.sidebar.error("ファイルの読み込みに失敗しました。")
 
 # タブ切り替え
 tab1, tab2 = st.tabs(["📝 データ入力", "📊 貼り付け用データ生成"])
@@ -79,12 +129,11 @@ with tab1:
             key="editor_qty",
         )
 
-    # 分かりやすい保存ボタンを追加
     st.markdown("---")
-    if st.button("💾 入力内容を保存する", type="primary", use_container_width=True):
+    if st.button("💾 一時保存する", type="primary", use_container_width=True):
         st.session_state.eval_df = edited_eval
         st.session_state.qty_df = edited_qty
-        st.success("✅ 入力したデータを保存しました！「貼り付け用データ生成」タブで確認できます。")
+        st.success("✅ 画面上の入力を反映しました！次回以降も残す場合は左メニューからCSVをダウンロードしてください。")
 
 with tab2:
     st.subheader("貼り付け用データ")
