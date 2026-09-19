@@ -1,12 +1,13 @@
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="機種評価・希望台数集計ツール", layout="wide")
+# 1. スマホ・PC共通で画面をワイド表示に設定
+st.set_page_config(page_title="機種評価・希望台数ツール", layout="wide")
 
-st.title("📊 機種評価・希望台数 集計ツール")
+st.title("📱 機種評価・希望台数まとめツール")
 
-# 初期データの定義
-TENPO_LIST = [
+# マスタデータ設定
+STORES = [
     "羽曳野",
     "松原",
     "布施",
@@ -17,109 +18,96 @@ TENPO_LIST = [
     "中石切",
     "大東",
 ]
-HYOUKA_OPTIONS = ["", "A", "B+", "B", "B-", "C"]
+RANKS = ["A", "B+", "B", "B-", "C", "None"]
 
-# --- セッション状態の初期化 ---
-if "df_hyouka" not in st.session_state:
-    st.session_state.df_hyouka = pd.DataFrame(
-        {
-            "機種名": [
-                "L 怪盗天使ツインエンジェル2 FX",
-                "eシャングリラ・フロンティア",
-                "LアカマターL1",
-                "Lブルーリフレクション帝L1",
-                "eルパン三世15HAM5",
-                "eいわせべ 逆転劇への道ver.FKX",
-                "e東京喰種MW",
-                "L東京喰種FT",
-            ],
-            "販売台数": [5000, 15000, 1000, 5000, 8000, 2000, 2500, 2500],
-            **{t: "" for t in TENPO_LIST},
-        }
+MODELS = [
+    ("L 怪盗天使ツインエンジェル2 FX", 5000),
+    ("e シャングリラ・フロンティア", 15000),
+    ("L アカマターL1", 1000),
+    ("L ブルーリフレクション帝L1", 5000),
+    ("e ルパン三世15HAM5", 8000),
+    ("e いわせべ 逆転劇への道 ver.FKX", 2000),
+    ("e 東京喰種MW", 2500),
+    ("L 東京喰種FT", 2500),
+]
+
+# セッション状態の初期化
+if "eval_df" not in st.session_state:
+    df_eval = pd.DataFrame(
+        {"機種名": [m[0] for m in MODELS], "販売台数": [m[1] for m in MODELS]}
     )
+    for store in STORES:
+        df_eval[store] = "None"
+    st.session_state.eval_df = df_eval
 
-if "df_kibou" not in st.session_state:
-    st.session_state.df_kibou = pd.DataFrame(
-        {
-            "機種名": st.session_state.df_hyouka["機種名"],
-            "販売台数": st.session_state.df_hyouka["販売台数"],
-            **{t: 0 for t in TENPO_LIST},
-        }
+if "qty_df" not in st.session_state:
+    df_qty = pd.DataFrame(
+        {"機種名": [m[0] for m in MODELS], "販売台数": [m[1] for m in MODELS]}
     )
+    for store in STORES:
+        df_qty[store] = 0
+    st.session_state.qty_df = df_qty
 
-# --- タブ表示 ---
-tab1, tab2 = st.tabs(["📝 データ入力", "📋 貼り付け用データ生成"])
+# タブ切り替え
+tab1, tab2 = st.tabs(["📝 データ入力", "📊 貼り付け用データ生成"])
 
 with tab1:
-    st.subheader("1. 機種評価の入力")
-    df_hyouka_edited = st.data_editor(
-        st.session_state.df_hyouka,
-        column_config={
-            t: st.column_config.SelectboxColumn(options=HYOUKA_OPTIONS)
-            for t in TENPO_LIST
-        },
-        num_rows="dynamic",
-        use_container_width=True,
-        key="editor_hyouka",
-    )
+    # アコーディオンにしてスマホでのスクロール長を軽減
+    with st.expander("1. 機種評価の入力（タップで開閉）", expanded=True):
+        st.session_state.eval_df = st.data_editor(
+            st.session_state.eval_df,
+            column_config={
+                store: st.column_config.SelectboxColumn(
+                    store, options=RANKS, required=True, width="small"
+                )
+                for store in STORES
+            },
+            use_container_width=True,  # 画面幅いっぱいに自動調整
+            hide_index=True,
+            key="editor_eval",
+        )
 
-    st.subheader("2. 希望台数の入力")
-    df_kibou_edited = st.data_editor(
-        st.session_state.df_kibou,
-        column_config={
-            t: st.column_config.NumberColumn(min_value=0, step=1)
-            for t in TENPO_LIST
-        },
-        num_rows="dynamic",
-        use_container_width=True,
-        key="editor_kibou",
-    )
+    with st.expander("2. 希望台数の入力（タップで開閉）", expanded=True):
+        st.session_state.qty_df = st.data_editor(
+            st.session_state.qty_df,
+            column_config={
+                store: st.column_config.NumberColumn(
+                    store, min_value=0, step=1, width="small"
+                )
+                for store in STORES
+            },
+            use_container_width=True,  # 画面幅いっぱいに自動調整
+            hide_index=True,
+            key="editor_qty",
+        )
 
 with tab2:
-    st.subheader("貼り付け用マトリクス（店舗 × 機種）")
+    st.subheader("貼り付け用データ")
 
-    # 機種評価マトリクスの作成（行：店舗、列：機種）
-    hyouka_matrix = (
-        df_hyouka_edited.melt(
-            id_vars=["機種名"], value_vars=TENPO_LIST, var_name="店舗", value_name="評価"
-        )
-        .pivot(index="店舗", columns="機種名", values="評価")
-        .reindex(TENPO_LIST)
+    # 評価集計
+    eval_melted = st.session_state.eval_df.melt(
+        id_vars=["機種名", "販売台数"],
+        value_vars=STORES,
+        var_name="店舗",
+        value_name="評価",
     )
+    eval_pivot = eval_melted.pivot(
+        index="店舗", columns="機種名", values="評価"
+    ).reindex(STORES)
 
-    # 希望台数マトリクスの作成
-    kibou_matrix = (
-        df_kibou_edited.melt(
-            id_vars=["機種名"],
-            value_vars=TENPO_LIST,
-            var_name="店舗",
-            value_name="台数",
-        )
-        .pivot(index="店舗", columns="機種名", values="台数")
-        .reindex(TENPO_LIST)
+    # 希望台数集計
+    qty_melted = st.session_state.qty_df.melt(
+        id_vars=["機種名", "販売台数"],
+        value_vars=STORES,
+        var_name="店舗",
+        value_name="希望台数",
     )
+    qty_pivot = qty_melted.pivot(
+        index="店舗", columns="機種名", values="希望台数"
+    ).reindex(STORES)
 
-    col1, col2 = st.columns(2)
+    st.write("▼ 機種評価マトリクス")
+    st.dataframe(eval_pivot, use_container_width=True)
 
-    with col1:
-        st.write("**【評価】貼り付け用表**")
-        st.dataframe(hyouka_matrix, use_container_width=True)
-
-    with col2:
-        st.write("**【希望台数】貼り付け用表**")
-        st.dataframe(kibou_matrix, use_container_width=True)
-
-    # Excel出力機能
-    import io
-
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        hyouka_matrix.to_excel(writer, sheet_name="機種評価_貼り付け用")
-        kibou_matrix.to_excel(writer, sheet_name="希望台数_貼り付け用")
-
-    st.download_button(
-        label="📥 貼り付け用データ(Excel)をダウンロード",
-        data=output.getvalue(),
-        file_name="集計結果_貼り付け用.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    st.write("▼ 希望台数マトリクス")
+    st.dataframe(qty_pivot, use_container_width=True)
